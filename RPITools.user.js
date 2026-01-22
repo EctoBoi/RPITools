@@ -245,7 +245,7 @@
 
     // Create Toast Container
     const toastContainer = document.createElement('div');
-    toastContainer.className = 'toast-container';
+    toastContainer.id = 'toast-container';
     document.body.appendChild(toastContainer);
 
     // Toast notification function

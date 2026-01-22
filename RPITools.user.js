@@ -1,15 +1,50 @@
 // ==UserScript==
 // @name         RPITools
 // @namespace    http://tampermonkey.net/
-// @version      1.4
-// @description  Copy slot and toggle layout views
+// @version      1.5
+// @description  Copy Buttons, layout views, Slot solutions
 // @match        https://retailproductinformation.prodretailapps.basspro.net/*
-// @grant        none
+// @grant        GM_addStyle
 // @run-at       document-end
 // ==/UserScript==
 
 (function () {
     "use strict";
+
+    // Inject Toast CSS
+    GM_addStyle(`
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10000;
+            pointer-events: none;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            font-size: 14px;
+            max-width: 300px;
+            word-wrap: break-word;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+            font-family: sans-serif;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .toast.warning { background: #ffc107; color: #212529; }
+    `);
+
 
     const PRIORITY_EXACT_SLOTS = ["CAMP0000", "FISH0000", "HUNT0000"]; // Priority 1 (Full matches)
     const PRIORITY_PREFIXES = ["CM", "FS", "HU", "MN", "FX"]; // Priority 2 & 3 (Starts with)
@@ -85,10 +120,10 @@
         if (moves.length > 0) {
             const output = moves.join("\n");
             navigator.clipboard.writeText(output).then(() => {
-                alert("Solution copied to clipboard:\n" + output);
+                showToast("Solution copied to clipboard:\n" + output, "success");
             });
         } else {
-            alert("No fixable negative slots found matching current criteria.");
+            showToast("No fixable negative slots found matching current criteria.", "error");
         }
     }
 
@@ -208,6 +243,29 @@
         });
     }
 
+    // Create Toast Container
+    const toastContainer = document.createElement('div');
+    toastContainer.className = 'toast-container';
+    document.body.appendChild(toastContainer);
+
+    // Toast notification function
+    function showToast(message, type = "info") {
+        const container = document.getElementById("toastContainer");
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        // Trigger animation
+        setTimeout(() => toast.classList.add("show"), 10);
+
+        // Auto remove after 3 seconds
+        setTimeout(() => {
+            toast.classList.remove("show");
+            setTimeout(() => container.removeChild(toast), 300);
+        }, 3000);
+    }
+    
     const observer = new MutationObserver((mutations) => {
         // Run the toggle button injector
         addLayoutToggleButton();

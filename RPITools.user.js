@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPITools
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  Copy Buttons, layout views, Slot solutions
 // @match        https://retailproductinformation.prodretailapps.basspro.net/*
 // @grant        GM_addStyle
@@ -47,26 +47,23 @@
 
 
     const PRIORITY_EXACT_SLOTS = ["CAMP0000", "FISH0000", "HUNT0000"]; // Priority 1 (Full matches)
-    const PRIORITY_PREFIXES = ["CM", "FS", "HU", "MN", "FX"]; // Priority 2 & 3 (Starts with)
+    const PRIORITY_PREFIXES = ["CM", "PF", "FS", "HU", "MN", "FX"]; // Priority 2 & 3
+    const PRIORITY_BACKROOM_PREFIXES = ["B1"]; // Priority 4
 
     function generateSolution() {
-        const skuTitle = document.querySelector(
-            "mat-card-title.mat-card-title",
-        );
+        const skuTitle = document.querySelector("mat-card-title.mat-card-title");
         if (!skuTitle) return;
         const skuMatch = skuTitle.textContent.match(/\d+$/);
         const sku = skuMatch ? skuMatch[0] : "UNKNOWN_SKU";
 
-        const container =
-            document.querySelector(".mat-dialog-container") || document;
-        const buttons = container.querySelectorAll(
-            ".primarySlotButton, .nonPrimarySlotButton",
-        );
+        const container = document.querySelector(".mat-dialog-container") || document;
+        const buttons = container.querySelectorAll(".primarySlotButton, .nonPrimarySlotButton");
 
         let negatives = [];
-        let poolExact = []; // Tier 1: Exact matches (CAMP0000, etc)
-        let poolNonPrimary = []; // Tier 2: Prefixes (CM...) + Non-Primary
-        let poolPrimary = []; // Tier 3: Prefixes (CM...) + Primary
+        let poolExact = []; // Tier 1: Exact matches
+        let poolNonPrimary = []; // Tier 2: Standard Prefixes + Non-Primary
+        let poolPrimary = []; // Tier 3: Standard Prefixes + Primary
+        let poolBackroom = []; // Tier 4: Backroom Prefixes
 
         buttons.forEach((btn) => {
             const spans = btn.querySelectorAll("span");
@@ -79,14 +76,16 @@
             if (qty < 0) {
                 negatives.push({ slot: slotName, qty: Math.abs(qty) });
             } else if (qty > 0) {
-                // Tier 1: Check Exact Matches
+                // Tier 1: Exact Matches
                 if (PRIORITY_EXACT_SLOTS.includes(slotName)) {
                     poolExact.push({ slot: slotName, qty: qty });
                 }
-                // Tiers 2 & 3: Check Prefixes
-                else if (
-                    PRIORITY_PREFIXES.some((pre) => slotName.startsWith(pre))
-                ) {
+                // Tier 4: Backroom Prefixes (Checked before generic prefixes if overlapped)
+                else if (PRIORITY_BACKROOM_PREFIXES.some((pre) => slotName.toUpperCase().startsWith(pre.toUpperCase()))) {
+                    poolBackroom.push({ slot: slotName, qty: qty });
+                }
+                // Tiers 2 & 3: Standard Prefixes
+                else if (PRIORITY_PREFIXES.some((pre) => slotName.toUpperCase().startsWith(pre.toUpperCase()))) {
                     if (btn.classList.contains("nonPrimarySlotButton")) {
                         poolNonPrimary.push({ slot: slotName, qty: qty });
                     } else {
@@ -96,7 +95,8 @@
             }
         });
 
-        const sourcePools = [poolExact, poolNonPrimary, poolPrimary];
+        // Search order: Exact -> Non-Primary -> Primary -> Backroom
+        const sourcePools = [poolExact, poolNonPrimary, poolPrimary, poolBackroom];
         let moves = [];
 
         negatives.forEach((neg) => {
@@ -106,9 +106,7 @@
                     if (pos.qty <= 0) continue;
 
                     let amountToMove = Math.min(neg.qty, pos.qty);
-                    moves.push(
-                        `${sku},${pos.slot},${neg.slot},${amountToMove}`,
-                    );
+                    moves.push(`${sku},${pos.slot},${neg.slot},${amountToMove}`);
 
                     neg.qty -= amountToMove;
                     pos.qty -= amountToMove;
@@ -265,7 +263,7 @@
             setTimeout(() => container.removeChild(toast), 300);
         }, 3000);
     }
-    
+
     const observer = new MutationObserver((mutations) => {
         // Run the toggle button injector
         addLayoutToggleButton();

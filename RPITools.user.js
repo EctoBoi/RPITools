@@ -13,7 +13,7 @@
 
     // Inject Toast CSS
     GM_addStyle(`
-        .toast-container {
+        #toastContainer {
             position: fixed;
             bottom: 20px;
             right: 20px;

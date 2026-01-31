@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPITools
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Copy Buttons, layout views, Slot solutions
 // @match        https://retailproductinformation.prodretailapps.basspro.net/*
 // @grant        GM_addStyle
@@ -46,11 +46,11 @@
     `);
 
 
-    const PRIORITY_EXACT_SLOTS = ["CAMP0000", "FISH0000", "HUNT0000"]; // Priority 1 (Full matches)
-    const PRIORITY_PREFIXES = ["CM", "PF", "FS", "HU", "MN", "FX"]; // Priority 2 & 3
+    const PRIORITY_EXACT_SLOTS = ["CAMP0000", "FISH0000", "HUNT0000", "FOOT0000", "HFRESADJ"]; // Priority 1 (Full matches)
+    const PRIORITY_PREFIXES = ["CM", "PF", "GF", "MA", "FS", "HU", "HC", "MN", "WM", "FX"]; // Priority 2 & 3
     const PRIORITY_BACKROOM_PREFIXES = ["B1"]; // Priority 4
 
-    function generateSolution() {
+    function fixNegatives() {
         const skuTitle = document.querySelector("mat-card-title.mat-card-title");
         if (!skuTitle) return;
         const skuMatch = skuTitle.textContent.match(/\d+$/);
@@ -125,36 +125,106 @@
         }
     }
 
-    function addFixButton(dialog) {
-        if (dialog.querySelector(".fix-inv-btn")) return;
+    function clearDefaults() {
+        // 1. Get SKU (adjusting selector to look for typical header if card title is missing)
+        const skuTitle = document.querySelector("mat-card-title.mat-card-title, .mat-dialog-title p");
+        if (!skuTitle) return;
+        const skuMatch = skuTitle.textContent.match(/\d+/);
+        const sku = skuMatch ? skuMatch[0] : "UNKNOWN_SKU";
 
+        const container = document.querySelector(".mat-dialog-container") || document;
+        const buttons = container.querySelectorAll(".primarySlotButton, .nonPrimarySlotButton");
+
+        let poolExact = []; // Source (Default locations)
+        let poolPrimary = []; // Target (Primary locations)
+
+        buttons.forEach((btn) => {
+            const spans = btn.querySelectorAll("span");
+            if (spans.length < 2) return;
+
+            const slotName = spans[0].innerText.trim();
+            const qtyText = spans[1].innerText.trim();
+            const qty = parseInt(qtyText.replace(/[^\d-]/g, ""));
+
+            // Source: It's in our Exact list and has items to move
+            if (PRIORITY_EXACT_SLOTS.includes(slotName) && qty > 0) {
+                poolExact.push({ slot: slotName, qty: qty });
+            }
+
+            // Target: It's a Primary Slot (even if qty is 0)
+            if (btn.classList.contains("primarySlotButton")) {
+                poolPrimary.push({ slot: slotName });
+            }
+        });
+
+        // 2. Specific Error: No Primary Slot found
+        if (poolPrimary.length === 0) {
+            showToast("Error: No Primary slot exists for this SKU.", "error");
+            return;
+        }
+
+        // 3. Specific Error: No Default items to move
+        if (poolExact.length === 0) {
+            showToast("No items found in Default slots (CAMP, FISH, etc.).", "info");
+            return;
+        }
+
+        let moves = [];
+        // Target the first available primary slot found
+        const targetSlot = poolPrimary[0].slot;
+
+        poolExact.forEach((src) => {
+            // Move full balance
+            moves.push(`${sku},${src.slot},${targetSlot},${src.qty}`);
+        });
+
+        if (moves.length > 0) {
+            const output = moves.join("\n");
+            navigator.clipboard.writeText(output).then(() => {
+                showToast("Move to Primary copied:\n" + output, "success");
+            });
+        }
+    }
+
+
+
+    function addFixInvButtons(dialog) {
+    if (dialog.querySelector(".fix-inv-btn")) return;
+
+    const createBtn = (text, color, rightOffset, clickFn) => {
         const btn = document.createElement("button");
-        btn.innerHTML = "Fix Inv";
+        btn.innerHTML = text;
         btn.className = "fix-inv-btn";
         Object.assign(btn.style, {
             position: "absolute",
             top: "21px",
-            right: "70px",
+            right: rightOffset,
             zIndex: "9999",
             padding: "8px 12px",
             cursor: "pointer",
             borderRadius: "4px",
             border: "none",
-            backgroundColor: "#4CAF50",
+            backgroundColor: color,
             color: "white",
             fontWeight: "bold",
             boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
         });
-
         btn.addEventListener("click", (e) => {
             e.preventDefault();
             e.stopPropagation();
-            generateSolution();
+            clickFn();
         });
+        return btn;
+    };
 
-        dialog.style.position = "relative";
-        dialog.appendChild(btn);
-    }
+    const fixNegBtn = createBtn("Fix Neg", "#4CAF50", "58px", fixNegatives);
+    const clearDefBtn = createBtn("Clear Def", "#2196F3", "144px", clearDefaults);
+
+    dialog.style.position = "relative";
+    dialog.appendChild(fixNegBtn);
+    dialog.appendChild(clearDefBtn);
+}
+
 
     function addLayoutToggleButton() {
         // Target the end of the first div of the first form inside .mat-card-content
@@ -280,7 +350,7 @@
         if (skuCard) attachSKUCopyHandler(skuCard);
 
         const dialog = document.querySelector(".mat-dialog-container");
-        if (dialog) addFixButton(dialog);
+        if (dialog) addFixInvButtons(dialog);
     });
 
     observer.observe(document.body, { childList: true, subtree: true });

@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         RPITools
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Copy Buttons, layout views, Slot solutions
 // @match        https://retailproductinformation.prodretailapps.basspro.net/*
 // @grant        GM_addStyle
 // @run-at       document-end
+// @require      https://cdn.jsdelivr.net/npm/jsbarcode@3.12.3/dist/JsBarcode.all.min.js
 // ==/UserScript==
 
 (function () {
@@ -43,6 +44,8 @@
         .toast.success { background: #28a745; }
         .toast.error { background: #dc3545; }
         .toast.warning { background: #ffc107; color: #212529; }
+
+        .primarySlotButton { background-color: #d9d9d9; }
     `);
 
 
@@ -311,6 +314,36 @@
         });
     }
 
+    function addSKUBarcode(matCardTitle){
+        const fullText = matCardTitle.innerText;
+        const skuMatch = fullText.match(/\d+$/);
+        const sku = skuMatch ? skuMatch[0] : null;
+
+        if(sku && sku !== matCardTitle.dataset.currentSKU){
+            matCardTitle.dataset.currentSKU = sku;
+            if(document.getElementById("barcodeDiv")){
+                document.getElementById("barcodeDiv").remove()
+            }
+
+            let div = document.createElement('div');
+            div.id = "barcodeDiv";
+
+            let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.id = 'barcode';
+            div.appendChild(svg);
+            matCardTitle.appendChild(div);
+
+            // Call JsBarcode to render the SKU
+            JsBarcode("#barcode", sku, {
+                format: "CODE128",
+                width: 1.5,
+                height: 10,
+                margin: 0,
+                displayValue: false // Hide text since SKU is already on page
+            });
+        }
+    }
+
     // Create Toast Container
     const toastContainer = document.createElement('div');
     toastContainer.id = 'toastContainer';
@@ -347,7 +380,10 @@
         if (buttons.length > 0) attachSlotCopyHandlers(buttons);
 
         const skuCard = document.querySelector("mat-card-title.mat-card-title");
-        if (skuCard) attachSKUCopyHandler(skuCard);
+        if (skuCard) {
+            attachSKUCopyHandler(skuCard);
+            addSKUBarcode(skuCard);
+        };
 
         const dialog = document.querySelector(".mat-dialog-container");
         if (dialog) addFixInvButtons(dialog);
